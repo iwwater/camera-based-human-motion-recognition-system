@@ -1,10 +1,18 @@
-# Pose-Based Rep Counting: A Rule-Based Baseline
+# Pose-Based Rep Counting: A Research Baseline
 
-A small research baseline for camera-based human movement recognition. The
-prototype takes a webcam stream, extracts BlazePose landmarks, and applies a
-rule-based finite state machine to count squat repetitions. It is intended as
-a study artifact and a starting point for comparing rule-based recognition
-against learning-based methods on the same task.
+A camera-based repetition counting baseline that combines a transparent
+rule-based finite state machine with weak-supervised learned baselines.
+It provides a browser demo for live webcam recognition, an offline evaluation
+pipeline on the RepCount squat subset, and a failure-case analysis that
+documents where fixed thresholds break down — intended as a comparison point
+for learning-based movement recognition methods.
+
+The repository includes: (1) a live browser demo using BlazePose via MediaPipe,
+(2) a fixed-threshold FSM offline evaluator (`eval.py`), (3) weak-supervised
+ML baselines (logistic regression and MLP) trained on interval-derived phase
+labels (`ml_baseline.py`), and (4) a deterministic sampling script for
+reproducible evaluation splits. All metrics are reported as baseline results,
+not as production accuracy claims.
 
 ## Research Question
 
@@ -13,101 +21,73 @@ movement repetitions from a single webcam under realistic variation in camera
 angle, lighting, and body framing? Where does it fail, and what does that imply
 for the design of a learning-based replacement?
 
-## Method
+## Pipeline
 
-1. **Pose extraction.** BlazePose through MediaPipe extracts 33 body landmarks
-   per frame.
-2. **Feature engineering.** Knee flexion angle, averaged across left and right,
-   and hip-vs-shoulder vertical offset are computed from landmarks. Knee angle
-   is smoothed with EMA alpha 0.35.
-3. **State machine recognition.** A four-state machine
-   (`Ready -> Descending -> Bottom -> Ascending -> Ready`) gates repetition
-   counting on hysteresis thresholds, a stable-frame requirement, and cooldown.
-4. **Browser demo.** `index.html` implements the live webcam version.
-5. **Offline evaluation.** `eval.py` ports the same fixed-threshold state
-   machine to Python so recorded videos can be evaluated with OBO accuracy and
-   MAE after ground-truth counts are available.
+```mermaid
+flowchart LR
+    V[Video / Webcam] --> P[BlazePose<br/>Landmark Extraction]
+    P --> F[Feature Engineering<br/>knee angle, hip-shoulder offset,<br/>visibility, ankle width, knee gap]
+    F --> M1[Fixed-Threshold FSM<br/>Ready-Desc-Bot-Asc-Ready]
+    F --> M2[Weak ML Baseline<br/>Logistic / MLP]
+    M1 --> C[Rep Count]
+    M2 --> C
+    C --> E[Evaluation<br/>MAE, OBO Accuracy]
+```
 
-The state-machine thresholds are intentionally fixed to match the browser demo:
-
-| Parameter | Value |
-|---|---:|
-| lower-body visibility threshold | 0.55 |
-| descend knee angle | 128.0 |
-| bottom knee angle | 112.0 |
-| ascend knee angle | 148.0 |
-| top knee angle | 160.0 |
-| stable frames | 3 |
-| cooldown | 750 ms |
-| EMA alpha | 0.35 |
-| hip-below-shoulder offset | 0.14 |
+See [docs/method.md](docs/method.md) for the full state-machine specification,
+threshold parameters, weak-label derivation, and feature-engineering details.
 
 ## Evaluation
 
-The current quantitative result is a small baseline run on 20 squat clips
-extracted from the RepCount/PoseRAC data package. The clips are not committed
-because the video data is large; `data/videos.csv` records the local manifest
-used for the run, and `results/eval.csv` records the per-video outputs.
+Results below are on a deterministic 33-clip subset of the RepCount squat split
+(Hu et al. 2022, via PoseRAC), sampled with seed 42. The full per-clip outputs
+are in `results/eval.csv` and `results/ml_baseline_eval.csv`.
+See [docs/evaluation.md](docs/evaluation.md) for metric definitions and
+complete reproduction commands.
 
-| Method | Dataset slice | Clips | MAE | OBO accuracy |
-|---|---|---:|---:|---:|
-| Fixed-threshold FSM | RepCount squat subset | 20 | 6.750 | 5/20 = 0.250 |
-| Weak logistic phase baseline | RepCount squat subset | 20 | 4.800 | 13/20 = 0.650 |
+| Method | Clips | MAE | OBO accuracy |
+|---|---|---|---|
+| Fixed-threshold FSM | 33 | 7.455 | 6/33 = 0.182 |
+| Weak logistic phase baseline | 33 | 4.424 | 19/33 = 0.576 |
+| Weak MLP phase baseline (32-16 hidden) | 33 | 4.788 | 13/33 = 0.394 |
 
-This is intentionally reported as a baseline result, not as a formal accuracy
-claim. The low score is useful evidence that the fixed-threshold recognizer is
-fragile under dataset variation and should be compared against a learned stage
-recognizer. The logistic baseline is weakly supervised: it derives approximate
-up/down labels from repetition intervals rather than from manually annotated
-per-frame movement phases.
+The FSM predicts 0 repetitions on 18 of 33 clips — evidence that fixed
+thresholds do not generalise across camera viewpoints and exercise styles
+without learning from data. The logistic baseline outperforms the MLP on this
+subset; both are weakly supervised from interval annotations.
 
-Manifest format:
-
-```csv
-video_path,gt_count,category
-repcount_squat/001_val1244.mp4,1,repcount_test_squant
-repcount_squat/002_val1257.mp4,2,repcount_test_squant
-```
-
-The `squant` spelling is preserved from the source annotation label.
+The `squant` spelling in category labels is preserved from the source annotation.
 
 ## Reproducing The Evaluation
 
-Create an environment and install dependencies:
-
 ```bash
+# Create environment
 python -m venv .venv
-.venv\Scripts\activate
+# macOS / Linux: source .venv/bin/activate
+# Windows:       .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
 Download `RepCount_pose.tar.gz` from the
-[PoseRAC project](https://github.com/MiracleDance/PoseRAC), then extract a
-deterministic squat subset:
+[PoseRAC project](https://github.com/MiracleDance/PoseRAC), then:
 
 ```bash
-python prepare_repcount_sample.py --archive _downloads\RepCount_pose.tar.gz --count 20
+# Extract deterministic squat subset
+python prepare_repcount_sample.py \
+    --archive _downloads/RepCount_pose.tar.gz --count 33 --seed 42
+
+# Rule-based FSM evaluation
+python eval.py \
+    --videos-csv data/videos.csv --videos-root data/videos \
+    --out results/eval.csv
+
+# Weak ML baseline (logistic + MLP)
+python ml_baseline.py \
+    --archive _downloads/RepCount_pose.tar.gz --videos-csv data/videos.csv \
+    --out results/ml_baseline_eval.csv --max-train-clips 33
 ```
 
-Run evaluation:
-
-```bash
-python eval.py --videos-csv data/videos.csv --videos-root data/videos --out results/eval.csv
-```
-
-`eval.py` prints MAE and OBO accuracy and writes the per-clip outputs to
-`results/eval.csv`.
-
-Run the weak learning-based baseline:
-
-```bash
-python ml_baseline.py --archive _downloads\RepCount_pose.tar.gz --videos-csv data/videos.csv --out results/ml_baseline_eval.csv --max-train-clips 20
-```
-
-`ml_baseline.py` trains a small logistic classifier on pose features extracted
-from 20 `video_train` squat clips, then counts down-to-up transitions on the
-same 20 evaluation clips used by the FSM baseline. It caches extracted training
-videos under `_downloads/`, which is ignored by git.
+Same `--seed 42` produces the same `data/videos.csv` every run.
 
 ## Running The Browser Demo
 
@@ -118,6 +98,17 @@ python -m http.server 8000
 Open `http://localhost:8000` in Chrome or Edge. Stand 2-3 meters from the
 camera with the full body in frame.
 
+### Browser Demo Modes
+
+The demo loads the BlazePose model either from a local `models/` directory
+or from the MediaPipe CDN, with local taking precedence.
+
+- **Offline mode**: Place `pose_landmarker_lite.task` in `./models/`
+  ([download from MediaPipe](https://developers.google.com/mediapipe/solutions/vision/pose_landmarker#models)).
+  The demo runs with no network access after page load.
+- **Online mode** (default fallback): The demo fetches the model from the
+  MediaPipe CDN. Requires network at startup.
+
 ## Boundaries
 
 This project is a movement-recognition research baseline. It is not intended
@@ -126,46 +117,67 @@ certification.
 
 ## Limitations
 
-- Rule-based recognizer, not trained on data.
-- Performance may degrade under heavy occlusion, low light, side views, partial
-  body framing, or very fast repetitions.
-- The current result is a 20-clip subset measurement, not a full benchmark.
-- Several clips produce zero counts because the fixed thresholds do not survive
-  camera/viewpoint and pose-estimation variation.
+- Rule-based recognizer with fixed thresholds, not trained on data.
+- Performance degrades under heavy occlusion, low light, side views, partial
+  body framing, or fast repetitions.
+- 33-clip subset measurement, not a full benchmark.
+- Weak labels are derived from interval midpoints, not per-frame annotations.
+  See [docs/limitations.md](docs/limitations.md) for a detailed discussion.
 
 ## Failure Cases
 
-The two examples below are from `results/eval.csv` and illustrate why the
-rule-based baseline is useful but brittle.
+Four representative FSM failures from `results/eval.csv`, each illustrating a
+different failure mode. See [docs/limitations.md](docs/limitations.md) for a
+broader discussion.
 
-![Failure case: frontal squat with missed threshold crossing](demo_assets/failure_cases/015_stu6_65_contact.jpg)
+### (a) Frontal but shallow motion
 
-`015_stu6_65.mp4`: ground truth 19, predicted 0. The subject stays visible, but
-the fixed knee-angle thresholds do not register the movement as a full
-`Descending -> Bottom -> Ascending` cycle. This suggests the hand-tuned
-thresholds are not invariant to exercise style and camera geometry.
+![Failure case: frontal squat, shallow motion](demo_assets/failure_cases/002_stu8_70_contact.jpg)
 
-![Failure case: side-view squat with partial count](demo_assets/failure_cases/008_stu5_62_contact.jpg)
+`002_stu8_70.mp4`: ground truth 4, FSM 0, LR 2, MLP 5. The subject faces the
+camera with upper body leaning forward. The knee angle stays above the
+BOTTOM=112 threshold, so the FSM never registers a full cycle. Fixed
+thresholds fail when body lean compresses the apparent knee flexion angle.
 
-`008_stu5_62.mp4`: ground truth 32, predicted 18. The side view and outdoor
-scene produce a more unstable lower-body pose signal, so the recognizer counts
-some cycles and misses others. This is a concrete target for a learned
-stage-recognition baseline.
+### (b) Side view
+
+![Failure case: side view](demo_assets/failure_cases/033_stu5_62_contact.jpg)
+
+`033_stu5_62.mp4`: ground truth 32, FSM 18, LR 32, MLP 36. Side camera angle
+causes one-side landmark occlusion, producing unstable knee-angle readings.
+The FSM counts some cycles and misses others. LR recovers the full count;
+MLP overshoots.
+
+### (c) Partial body framing
+
+![Failure case: partial body](demo_assets/failure_cases/004_stu4_68_contact.jpg)
+
+`004_stu4_68.mp4`: ground truth 5, FSM 0, LR 5, MLP 20. The lower body is
+partially cropped out of frame. Lower-body landmark visibility drops below the
+0.55 threshold, resetting the FSM state machine. LR handles this clip
+correctly; MLP overcounts substantially.
+
+### (d) Fast movement with pose noise
+
+![Failure case: fast movement](demo_assets/failure_cases/005_stu3_66_contact.jpg)
+
+`005_stu3_66.mp4`: ground truth 9, FSM 5, LR 10, MLP 10. Fast repetition tempo
+combined with pose-estimation jitter causes the FSM to miss several cycles.
+The stable-frames requirement (3 frames) filters some genuine transitions that
+do not persist long enough. Both learned baselines come within OBO range.
 
 ## Future Work
 
 1. Replace weak interval-derived labels with manually checked per-frame phase
    labels for a small subset.
-2. Expand the evaluation split after the failure cases are understood.
-3. Add per-frame diagnostics for knee angle, visibility, and state transitions.
+2. Cross-subject evaluation: train on one subject group, test on another.
+3. Extend to multi-exercise recognition (push-up, lunge).
 
 ## Related Work
 
 - BlazePose / MediaPipe Pose: real-time 33-landmark body tracking.
 - Hu et al. 2022, TransRAC: RepCount benchmark and OBO / MAE metrics.
-- Yao et al. 2023, PoseRAC: pose-driven learning approach to repetition
-  counting, plus the public
-  [RepCount_pose data package](https://github.com/MiracleDance/PoseRAC) used
-  by `prepare_repcount_sample.py`.
+- Yao et al. 2023, PoseRAC: pose-driven repetition counting, plus the public
+  [RepCount_pose data package](https://github.com/MiracleDance/PoseRAC).
 - Dwibedi et al. 2020, Counting Out Time: reference repetition-counting
   framework.

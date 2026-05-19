@@ -20,6 +20,9 @@ from pathlib import Path
 import cv2
 import mediapipe as mp
 import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.neural_network import MLPClassifier
+from sklearn.preprocessing import StandardScaler
 
 
 TRAIN_ANNOTATION = "RepCount_pose/annotation/video_train.csv"
@@ -29,6 +32,14 @@ EVAL_ANNOTATIONS = (
 )
 POSE_DIR = "RepCount_pose/test_poses"
 SQUAT_TYPES = {"squat", "squant"}
+
+FEATURE_NAMES = [
+    "smoothed_knee_angle",
+    "hip_y_minus_shoulder_y",
+    "ankle_width",
+    "knee_gap",
+    "min_lower_visibility",
+]
 
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
@@ -151,6 +162,34 @@ def extract_video(tar: tarfile.TarFile, member_name: str, cache_dir: Path) -> Pa
     return output_path
 
 
+EMA_ALPHA = 0.35
+
+REQUIRED_LOWER = [LEFT_HIP, RIGHT_HIP, LEFT_KNEE, RIGHT_KNEE, LEFT_ANKLE, RIGHT_ANKLE]
+
+
+def extract_features(lms) -> np.ndarray:
+    left_knee = angle_deg(
+        np.array([lms[LEFT_HIP].x, lms[LEFT_HIP].y]),
+        np.array([lms[LEFT_KNEE].x, lms[LEFT_KNEE].y]),
+        np.array([lms[LEFT_ANKLE].x, lms[LEFT_ANKLE].y]),
+    )
+    right_knee = angle_deg(
+        np.array([lms[RIGHT_HIP].x, lms[RIGHT_HIP].y]),
+        np.array([lms[RIGHT_KNEE].x, lms[RIGHT_KNEE].y]),
+        np.array([lms[RIGHT_ANKLE].x, lms[RIGHT_ANKLE].y]),
+    )
+    raw_knee = (left_knee + right_knee) / 2.0
+    hip_y = (lms[LEFT_HIP].y + lms[RIGHT_HIP].y) / 2.0
+    shoulder_y = (lms[LEFT_SHOULDER].y + lms[RIGHT_SHOULDER].y) / 2.0
+    ankle_width = abs(lms[LEFT_ANKLE].x - lms[RIGHT_ANKLE].x)
+    knee_gap = abs(lms[LEFT_KNEE].x - lms[RIGHT_KNEE].x)
+    min_vis = min(lms[i].visibility for i in REQUIRED_LOWER)
+    return np.array(
+        [raw_knee, hip_y - shoulder_y, ankle_width, knee_gap, min_vis],
+        dtype=np.float32,
+    )
+
+
 def video_features(
     video_path: Path, pose_model, labels: np.ndarray | None = None
 ) -> tuple[np.ndarray, np.ndarray | None]:
@@ -161,6 +200,7 @@ def video_features(
     xs = []
     ys = []
     frame_idx = 0
+    smoothed_knee = None
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -168,12 +208,21 @@ def video_features(
 
         result = pose_model.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         if result.pose_landmarks:
-            xs.append(pose_features(landmarks_to_pose(result.pose_landmarks)))
+            feats = extract_features(result.pose_landmarks.landmark)
+            raw_knee = feats[0]
+            if smoothed_knee is None:
+                smoothed_knee = raw_knee
+            else:
+                smoothed_knee = smoothed_knee * (1.0 - EMA_ALPHA) + raw_knee * EMA_ALPHA
+            feats[0] = smoothed_knee
+            xs.append(feats)
             if labels is not None and frame_idx < len(labels):
                 ys.append(labels[frame_idx])
         frame_idx += 1
 
     cap.release()
+    if len(xs) == 0:
+        return np.zeros((0, 5), dtype=np.float32), None
     if labels is None:
         return np.vstack(xs), None
     return np.vstack(xs), np.array(ys, dtype=np.float32)
@@ -241,29 +290,25 @@ def build_training_set(
     return np.vstack(xs), np.array(ys, dtype=np.float32)
 
 
-def train_logistic(
-    x: np.ndarray, y: np.ndarray, epochs: int, learning_rate: float
-) -> tuple[np.ndarray, float, np.ndarray, np.ndarray]:
-    mean = x.mean(axis=0)
-    std = x.std(axis=0) + 1e-6
-    x_norm = (x - mean) / std
-    x_aug = np.c_[np.ones(len(x_norm), dtype=np.float32), x_norm]
-    weights = np.zeros(x_aug.shape[1], dtype=np.float32)
-
-    for _ in range(epochs):
-        logits = x_aug @ weights
-        probs = 1.0 / (1.0 + np.exp(-logits))
-        grad = x_aug.T @ (probs - y) / len(y)
-        weights -= learning_rate * grad
-
-    return weights[1:], float(weights[0]), mean, std
+def train_sklearn_models(
+    x: np.ndarray, y: np.ndarray
+) -> tuple[LogisticRegression, MLPClassifier, StandardScaler]:
+    scaler = StandardScaler()
+    x_scaled = scaler.fit_transform(x)
+    lr = LogisticRegression(random_state=42, max_iter=500)
+    lr.fit(x_scaled, y)
+    mlp = MLPClassifier(
+        hidden_layer_sizes=(32, 16), max_iter=500, random_state=42
+    )
+    mlp.fit(x_scaled, y)
+    return lr, mlp, scaler
 
 
-def predict_down_prob(
-    features: np.ndarray, weights: np.ndarray, bias: float, mean: np.ndarray, std: np.ndarray
+def predict_probs(
+    features: np.ndarray, model, scaler: StandardScaler
 ) -> np.ndarray:
-    logits = ((features - mean) / std) @ weights + bias
-    return 1.0 / (1.0 + np.exp(-logits))
+    x_scaled = scaler.transform(features)
+    return model.predict_proba(x_scaled)[:, 1]
 
 
 def count_transitions(probs: np.ndarray) -> int:
@@ -325,10 +370,28 @@ def write_results(path: Path, rows: list[dict[str, object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["video_name", "category", "gt_count", "pred_count", "abs_error", "obo"]
+            f,
+            fieldnames=[
+                "video_name", "category", "gt_count",
+                "pred_count_lr", "abs_error_lr", "obo_lr",
+                "pred_count_mlp", "abs_error_mlp", "obo_mlp",
+            ],
         )
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_feature_summary(
+    path: Path, x_all: np.ndarray, video_names: list[str]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["statistic"] + FEATURE_NAMES)
+        writer.writerow(["mean"] + [f"{v:.4f}" for v in x_all.mean(axis=0)])
+        writer.writerow(["std"] + [f"{v:.4f}" for v in x_all.std(axis=0)])
+        writer.writerow(["min"] + [f"{v:.4f}" for v in x_all.min(axis=0)])
+        writer.writerow(["max"] + [f"{v:.4f}" for v in x_all.max(axis=0)])
 
 
 def main() -> None:
@@ -337,9 +400,8 @@ def main() -> None:
         x_train, y_train = build_training_set(
             tar, Path(args.train_cache), args.max_train_clips
         )
-        weights, bias, mean, std = train_logistic(
-            x_train, y_train, args.epochs, args.learning_rate
-        )
+        print(f"Training set: {x_train.shape[0]} frames, {x_train.shape[1]} features")
+        lr_model, mlp_model, scaler = train_sklearn_models(x_train, y_train)
 
         pose_model = mp.solutions.pose.Pose(
             model_complexity=1,
@@ -348,33 +410,59 @@ def main() -> None:
             min_tracking_confidence=0.5,
         )
 
+        all_features = []
         rows = []
         for manifest_path, video_name, gt_count, category in read_eval_names(Path(args.videos_csv)):
             video_path = Path("data/videos") / manifest_path
             features, _ = video_features(video_path, pose_model)
-            probs = predict_down_prob(features, weights, bias, mean, std)
-            pred = count_transitions(probs)
-            err = abs(pred - gt_count)
+            if features.shape[0] == 0:
+                print(f"{video_name}: SKIP (no features)")
+                continue
+            all_features.append(features)
+            probs_lr = predict_probs(features, lr_model, scaler)
+            probs_mlp = predict_probs(features, mlp_model, scaler)
+            pred_lr = count_transitions(probs_lr)
+            pred_mlp = count_transitions(probs_mlp)
+            err_lr = abs(pred_lr - gt_count)
+            err_mlp = abs(pred_mlp - gt_count)
             rows.append(
                 {
                     "video_name": video_name,
                     "category": category,
                     "gt_count": gt_count,
-                    "pred_count": pred,
-                    "abs_error": err,
-                    "obo": 1 if err <= 1 else 0,
+                    "pred_count_lr": pred_lr,
+                    "abs_error_lr": err_lr,
+                    "obo_lr": 1 if err_lr <= 1 else 0,
+                    "pred_count_mlp": pred_mlp,
+                    "abs_error_mlp": err_mlp,
+                    "obo_mlp": 1 if err_mlp <= 1 else 0,
                 }
             )
-            print(f"{video_name}: gt={gt_count} pred={pred} err={err}")
+            print(
+                f"{video_name}: gt={gt_count}  lr={pred_lr} (err={err_lr})  "
+                f"mlp={pred_mlp} (err={err_mlp})"
+            )
+
+    if all_features:
+        x_all = np.vstack(all_features)
+        write_feature_summary(
+            Path("results/feature_summary.csv"),
+            x_all,
+            [r["video_name"] for r in rows],
+        )
+        print(f"Feature summary written to results/feature_summary.csv")
 
     write_results(Path(args.out), rows)
-    mae = sum(int(row["abs_error"]) for row in rows) / len(rows)
-    obo_sum = sum(int(row["obo"]) for row in rows)
+    n = len(rows)
+    mae_lr = sum(int(row["abs_error_lr"]) for row in rows) / n
+    obo_lr = sum(int(row["obo_lr"]) for row in rows)
+    mae_mlp = sum(int(row["abs_error_mlp"]) for row in rows) / n
+    obo_mlp = sum(int(row["obo_mlp"]) for row in rows)
     print("\n=== Weak ML Baseline Summary ===")
     print(f"Wrote per-video results to: {args.out}")
-    print(f"n = {len(rows)}")
-    print(f"MAE          = {mae:.3f}")
-    print(f"OBO accuracy = {obo_sum}/{len(rows)} = {obo_sum / len(rows):.3f}")
+    print(f"n = {n}")
+    print(f"Logistic  MAE = {mae_lr:.3f}  OBO = {obo_lr}/{n} = {obo_lr / n:.3f}")
+    print(f"MLP      MAE = {mae_mlp:.3f}  OBO = {obo_mlp}/{n} = {obo_mlp / n:.3f}")
 
 
 if __name__ == "__main__":

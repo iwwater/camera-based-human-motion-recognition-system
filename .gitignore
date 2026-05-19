@@ -9,6 +9,9 @@ data/videos/
 !data/videos.csv
 _downloads/
 
+# MediaPipe model files are large, download instructions in models/README.md
+models/*.task
+
 # local browser/test artifacts
 .playwright-mcp/
 movement-session-*.json

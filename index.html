@@ -333,6 +333,8 @@
       <div><strong>Render</strong><br><span id="renderText">Canvas contain</span></div>
       <div><strong>Calibration</strong><br><span id="calibrationText">Fixed thresholds</span></div>
       <div><strong>Last Rep</strong><br><span id="lastRepText">No completed rep</span></div>
+      <div><strong>Frame</strong><br><span id="frameIdxText">0</span></div>
+      <div><strong>Session</strong><br><span id="sessionDurationText">00:00</span></div>
     </div>
 
     <h3>Research Pipeline</h3>
@@ -393,6 +395,8 @@
   const renderTextEl = document.getElementById("renderText");
   const calibrationTextEl = document.getElementById("calibrationText");
   const lastRepTextEl = document.getElementById("lastRepText");
+  const frameIdxTextEl = document.getElementById("frameIdxText");
+  const sessionDurationTextEl = document.getElementById("sessionDurationText");
 
   const LANDMARK = {
     LEFT_SHOULDER: 11,
@@ -425,6 +429,7 @@
   const REP_COOLDOWN_MS = 750;
 
   let poseLandmarker;
+  let modelSource = "CDN";
   let running = false;
   let lastVideoTime = -1;
   let repCount = 0;
@@ -437,6 +442,8 @@
   let smoothedKnee = null;
   let lastFrameAt = performance.now();
   let fps = 0;
+  let frameIdx = 0;
+  let sessionStartTime = 0;
   let weakPoseFrames = 0;
   let activeSquatThresholds = { ...DEFAULT_SQUAT_THRESHOLDS };
   let currentSquatFrame = null;
@@ -456,7 +463,7 @@
     return {
       startedAt: new Date().toISOString(),
       exercise: exerciseEl?.value ?? "squat",
-      model: "MediaPipe Pose Landmarker Lite via CDN",
+      model: `MediaPipe Pose Landmarker Lite (${modelSource})`,
       recognition: "rule-based baseline with EMA, hysteresis, stable frames, and cooldown",
       calibration: null,
       thresholdMode: "fixed",
@@ -557,6 +564,10 @@
     rightKneeEl.textContent = "--";
     trackingQualityEl.textContent = "No pose";
     framingQualityEl.textContent = "Stand in view";
+    frameIdx = 0;
+    sessionStartTime = performance.now();
+    frameIdxTextEl.textContent = "0";
+    sessionDurationTextEl.textContent = "00:00";
     resetQualityDisplay();
     setFeedback("Counter reset. Stand in view and start again.");
   }
@@ -853,16 +864,32 @@
     ctx.restore();
   }
 
+  const LOCAL_MODEL = "./models/pose_landmarker_lite.task";
+  const CDN_MODEL =
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task";
+
   async function loadModel() {
     statusEl.textContent = "Loading pose model...";
     startBtn.disabled = true;
+
     const vision = await FilesetResolver.forVisionTasks(
       "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
     );
+
+    let modelPath = CDN_MODEL;
+    try {
+      const check = await fetch(LOCAL_MODEL, { method: "HEAD" });
+      if (check.ok) {
+        modelPath = LOCAL_MODEL;
+        modelSource = "local";
+      }
+    } catch {
+      // local model not available, fall back to CDN
+    }
+
     const options = {
       baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+        modelAssetPath: modelPath,
         delegate: "GPU"
       },
       runningMode: "VIDEO",
@@ -880,7 +907,8 @@
       poseLandmarker = await PoseLandmarker.createFromOptions(vision, options);
     }
 
-    statusEl.textContent = "Model loaded";
+    sessionLog.model = `MediaPipe Pose Landmarker Lite (${modelSource})`;
+    statusEl.textContent = `Model loaded (${modelSource})`;
     startBtn.disabled = false;
   }
 
@@ -898,6 +926,10 @@
     await video.play();
     running = true;
     lastVideoTime = -1;
+    frameIdx = 0;
+    sessionStartTime = performance.now();
+    frameIdxTextEl.textContent = "0";
+    sessionDurationTextEl.textContent = "00:00";
     statusEl.textContent = "Running";
     requestAnimationFrame(loop);
   }
@@ -1081,6 +1113,12 @@
     }
 
     updateFrameStats();
+    frameIdx += 1;
+    frameIdxTextEl.textContent = frameIdx;
+    const sessionSec = Math.round((performance.now() - sessionStartTime) / 1000);
+    const mm = String(Math.floor(sessionSec / 60)).padStart(2, "0");
+    const ss = String(sessionSec % 60).padStart(2, "0");
+    sessionDurationTextEl.textContent = mm + ":" + ss;
     requestAnimationFrame(loop);
   }
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import csv
 import io
+import random
 import tarfile
 from pathlib import Path
 
@@ -23,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--archive", required=True, help="Path to RepCount_pose.tar.gz")
     parser.add_argument("--count", type=int, default=20, help="Number of clips to extract")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for deterministic shuffle")
     parser.add_argument(
         "--videos-dir",
         default="data/videos/repcount_squat",
@@ -114,9 +116,15 @@ def main() -> None:
 
     with tarfile.open(archive, "r:gz") as tar:
         rows = collect_rows(tar)
+        if len(rows) < args.count:
+            print(
+                f"WARNING: Only {len(rows)} squat clips found in archive, "
+                f"fewer than requested --count={args.count}. "
+                f"Using all {len(rows)} available clips."
+            )
+        rng = random.Random(args.seed)
+        rng.shuffle(rows)
         subset = rows[: args.count]
-        if len(subset) < args.count:
-            raise ValueError(f"Only found {len(subset)} squat clips")
         manifest_rows = extract_subset(tar, subset, videos_dir)
 
     write_manifest(manifest, manifest_rows)

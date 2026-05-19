@@ -1,0 +1,5 @@
+statistic,smoothed_knee_angle,hip_y_minus_shoulder_y,ankle_width,knee_gap,min_lower_visibility
+mean,147.2730,0.1879,0.1018,0.0947,0.7967
+std,36.3682,0.0708,0.0686,0.0632,0.2629
+min,8.7832,-0.2568,0.0000,0.0000,0.0071
+max,179.9137,0.7950,0.4834,0.4761,0.9990
