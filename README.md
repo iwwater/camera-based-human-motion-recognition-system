@@ -49,14 +49,17 @@ extracted from the RepCount/PoseRAC data package. The clips are not committed
 because the video data is large; `data/videos.csv` records the local manifest
 used for the run, and `results/eval.csv` records the per-video outputs.
 
-| Dataset slice | Clips | MAE | OBO accuracy |
-|---|---:|---:|---:|
-| RepCount squat subset | 20 | 6.750 | 5/20 = 0.250 |
+| Method | Dataset slice | Clips | MAE | OBO accuracy |
+|---|---|---:|---:|---:|
+| Fixed-threshold FSM | RepCount squat subset | 20 | 6.750 | 5/20 = 0.250 |
+| Weak logistic phase baseline | RepCount squat subset | 20 | 4.800 | 13/20 = 0.650 |
 
 This is intentionally reported as a baseline result, not as a formal accuracy
 claim. The low score is useful evidence that the fixed-threshold recognizer is
 fragile under dataset variation and should be compared against a learned stage
-recognizer.
+recognizer. The logistic baseline is weakly supervised: it derives approximate
+up/down labels from repetition intervals rather than from manually annotated
+per-frame movement phases.
 
 Manifest format:
 
@@ -95,6 +98,17 @@ python eval.py --videos-csv data/videos.csv --videos-root data/videos --out resu
 `eval.py` prints MAE and OBO accuracy and writes the per-clip outputs to
 `results/eval.csv`.
 
+Run the weak learning-based baseline:
+
+```bash
+python ml_baseline.py --archive _downloads\RepCount_pose.tar.gz --videos-csv data/videos.csv --out results/ml_baseline_eval.csv --max-train-clips 20
+```
+
+`ml_baseline.py` trains a small logistic classifier on pose features extracted
+from 20 `video_train` squat clips, then counts down-to-up transitions on the
+same 20 evaluation clips used by the FSM baseline. It caches extracted training
+videos under `_downloads/`, which is ignored by git.
+
 ## Running The Browser Demo
 
 ```bash
@@ -119,11 +133,31 @@ certification.
 - Several clips produce zero counts because the fixed thresholds do not survive
   camera/viewpoint and pose-estimation variation.
 
+## Failure Cases
+
+The two examples below are from `results/eval.csv` and illustrate why the
+rule-based baseline is useful but brittle.
+
+![Failure case: frontal squat with missed threshold crossing](demo_assets/failure_cases/015_stu6_65_contact.jpg)
+
+`015_stu6_65.mp4`: ground truth 19, predicted 0. The subject stays visible, but
+the fixed knee-angle thresholds do not register the movement as a full
+`Descending -> Bottom -> Ascending` cycle. This suggests the hand-tuned
+thresholds are not invariant to exercise style and camera geometry.
+
+![Failure case: side-view squat with partial count](demo_assets/failure_cases/008_stu5_62_contact.jpg)
+
+`008_stu5_62.mp4`: ground truth 32, predicted 18. The side view and outdoor
+scene produce a more unstable lower-body pose signal, so the recognizer counts
+some cycles and misses others. This is a concrete target for a learned
+stage-recognition baseline.
+
 ## Future Work
 
-1. Inspect high-error videos and describe concrete failure modes.
-2. Compare against a small learning-based stage recognizer using the same clips.
-3. Expand the evaluation split after the failure cases are understood.
+1. Replace weak interval-derived labels with manually checked per-frame phase
+   labels for a small subset.
+2. Expand the evaluation split after the failure cases are understood.
+3. Add per-frame diagnostics for knee angle, visibility, and state transitions.
 
 ## Related Work
 
