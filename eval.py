@@ -25,7 +25,6 @@ from pathlib import Path
 import cv2
 import mediapipe as mp
 
-
 LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
 LEFT_HIP = 23
@@ -88,7 +87,7 @@ def count_reps(video_path: Path, verbose: bool = False) -> int:
     stage = "Ready"
     bottom_frames = 0
     top_frames = 0
-    last_rep_frame = -10**9
+    last_rep_frame = -(10**9)
     rep_count = 0
     frame_idx = 0
     weak_pose_streak = 0
@@ -126,7 +125,9 @@ def count_reps(video_path: Path, verbose: bool = False) -> int:
             weak_pose_streak = 0
 
             left_knee_ang = angle_deg(lms[LEFT_HIP], lms[LEFT_KNEE], lms[LEFT_ANKLE])
-            right_knee_ang = angle_deg(lms[RIGHT_HIP], lms[RIGHT_KNEE], lms[RIGHT_ANKLE])
+            right_knee_ang = angle_deg(
+                lms[RIGHT_HIP], lms[RIGHT_KNEE], lms[RIGHT_ANKLE]
+            )
             avg_knee = (left_knee_ang + right_knee_ang) / 2.0
 
             if smoothed_knee is None:
@@ -200,7 +201,9 @@ def main() -> None:
             video_path = root / row["video_path"]
             gt = int(row["gt_count"])
             category = row.get("category", "") or ""
-            print(f"[{len(rows_out) + 1}] {video_path.name}  (gt={gt}, cat={category!r})")
+            print(
+                f"[{len(rows_out) + 1}] {video_path.name}  (gt={gt}, cat={category!r})"
+            )
 
             try:
                 pred = count_reps(video_path, verbose=args.verbose)

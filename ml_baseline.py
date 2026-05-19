@@ -24,7 +24,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler
 
-
 TRAIN_ANNOTATION = "RepCount_pose/annotation/video_train.csv"
 EVAL_ANNOTATIONS = (
     "RepCount_pose/annotation/test.csv",
@@ -297,16 +296,12 @@ def train_sklearn_models(
     x_scaled = scaler.fit_transform(x)
     lr = LogisticRegression(random_state=42, max_iter=500)
     lr.fit(x_scaled, y)
-    mlp = MLPClassifier(
-        hidden_layer_sizes=(32, 16), max_iter=500, random_state=42
-    )
+    mlp = MLPClassifier(hidden_layer_sizes=(32, 16), max_iter=500, random_state=42)
     mlp.fit(x_scaled, y)
     return lr, mlp, scaler
 
 
-def predict_probs(
-    features: np.ndarray, model, scaler: StandardScaler
-) -> np.ndarray:
+def predict_probs(features: np.ndarray, model, scaler: StandardScaler) -> np.ndarray:
     x_scaled = scaler.transform(features)
     return model.predict_proba(x_scaled)[:, 1]
 
@@ -372,9 +367,15 @@ def write_results(path: Path, rows: list[dict[str, object]]) -> None:
         writer = csv.DictWriter(
             f,
             fieldnames=[
-                "video_name", "category", "gt_count",
-                "pred_count_lr", "abs_error_lr", "obo_lr",
-                "pred_count_mlp", "abs_error_mlp", "obo_mlp",
+                "video_name",
+                "category",
+                "gt_count",
+                "pred_count_lr",
+                "abs_error_lr",
+                "obo_lr",
+                "pred_count_mlp",
+                "abs_error_mlp",
+                "obo_mlp",
             ],
         )
         writer.writeheader()
@@ -412,7 +413,9 @@ def main() -> None:
 
         all_features = []
         rows = []
-        for manifest_path, video_name, gt_count, category in read_eval_names(Path(args.videos_csv)):
+        for manifest_path, video_name, gt_count, category in read_eval_names(
+            Path(args.videos_csv)
+        ):
             video_path = Path("data/videos") / manifest_path
             features, _ = video_features(video_path, pose_model)
             if features.shape[0] == 0:

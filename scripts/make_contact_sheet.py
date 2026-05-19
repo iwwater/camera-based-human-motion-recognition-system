@@ -6,6 +6,7 @@ Usage:
         --out demo_assets/failure_cases/015_stu6_65_contact.jpg \
         --n-frames 5
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,8 +44,13 @@ def make_contact_sheet(
         frame = cv2.resize(frame, (new_w, target_height))
         label = f"f={idx}"
         cv2.putText(
-            frame, label, (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2,
+            frame,
+            label,
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (255, 255, 255),
+            2,
         )
         frames.append(frame)
     cap.release()
@@ -66,14 +72,20 @@ def make_contact_sheet(
     out = Path(out_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), sheet)
-    print(f"Contact sheet saved to {out}  ({len(frames)} frames, {sheet.shape[1]}x{sheet.shape[0]} px)")
+    print(
+        f"Contact sheet saved to {out}  ({len(frames)} frames, {sheet.shape[1]}x{sheet.shape[0]} px)"
+    )
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--video", required=True, help="Path to input video file")
     ap.add_argument("--out", required=True, help="Path to output image (.jpg)")
-    ap.add_argument("--n-frames", type=int, default=5, help="Number of equally-spaced frames")
-    ap.add_argument("--target-height", type=int, default=270, help="Height of each frame row in px")
+    ap.add_argument(
+        "--n-frames", type=int, default=5, help="Number of equally-spaced frames"
+    )
+    ap.add_argument(
+        "--target-height", type=int, default=270, help="Height of each frame row in px"
+    )
     args = ap.parse_args()
     make_contact_sheet(args.video, args.out, args.n_frames, args.target_height)

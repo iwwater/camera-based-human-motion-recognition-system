@@ -10,7 +10,6 @@ import random
 import tarfile
 from pathlib import Path
 
-
 ANNOTATION_FILES = (
     ("test", "RepCount_pose/annotation/test.csv"),
     ("valid", "RepCount_pose/annotation/valid.csv"),
@@ -23,8 +22,12 @@ def parse_args() -> argparse.Namespace:
         description="Prepare a deterministic squat subset from RepCount_pose.tar.gz."
     )
     parser.add_argument("--archive", required=True, help="Path to RepCount_pose.tar.gz")
-    parser.add_argument("--count", type=int, default=20, help="Number of clips to extract")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for deterministic shuffle")
+    parser.add_argument(
+        "--count", type=int, default=20, help="Number of clips to extract"
+    )
+    parser.add_argument(
+        "--seed", type=int, default=42, help="Random seed for deterministic shuffle"
+    )
     parser.add_argument(
         "--videos-dir",
         default="data/videos/repcount_squat",
@@ -91,7 +94,9 @@ def extract_subset(
 
         manifest_rows.append(
             {
-                "video_path": str(Path("repcount_squat") / output_name).replace("\\", "/"),
+                "video_path": str(Path("repcount_squat") / output_name).replace(
+                    "\\", "/"
+                ),
                 "gt_count": row["gt_count"],
                 "category": row["category"],
             }
