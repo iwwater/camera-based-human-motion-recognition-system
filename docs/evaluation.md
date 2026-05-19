@@ -71,5 +71,19 @@ are selected every run. The per-clip outputs in `results/eval.csv` and
 | Weak MLP phase baseline (32-16 hidden) | 33 | 4.788 | 13/33 = 0.394 |
 
 The logistic baseline outperforms the MLP on this subset. The FSM predicts 0
-repetitions on 18 of the 33 clips, confirming that fixed thresholds do not
+repetitions on 19 of the 33 clips, confirming that fixed thresholds do not
 generalize across camera viewpoints and exercise styles.
+
+### Per-Category Breakdown
+
+| Category | n | FSM OBO | LR OBO | MLP OBO |
+|---|---|---|---|---|
+| repcount_test_squat | 13 | 0.154 | 0.538 | 0.615 |
+| repcount_test_squant | 5 | 0.400 | 0.800 | 0.400 |
+| repcount_valid_squat | 11 | 0.091 | 0.545 | 0.091 |
+| repcount_valid_squant | 4 | 0.250 | 0.500 | 0.500 |
+
+The per-category breakdown shows the MLP overfitting on the validation split:
+it surpasses the logistic baseline on test_squat (0.615 vs 0.538) but collapses
+on valid_squat (0.091 vs 0.545). This is consistent with weak interval-derived
+labels providing insufficient signal for the larger model to generalize.

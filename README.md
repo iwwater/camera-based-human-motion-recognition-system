@@ -51,7 +51,7 @@ complete reproduction commands.
 | Weak logistic phase baseline | 33 | 4.424 | 19/33 = 0.576 |
 | Weak MLP phase baseline (32-16 hidden) | 33 | 4.788 | 13/33 = 0.394 |
 
-The FSM predicts 0 repetitions on 18 of 33 clips — evidence that fixed
+The FSM predicts 0 repetitions on 19 of 33 clips — evidence that fixed
 thresholds do not generalise across camera viewpoints and exercise styles
 without learning from data. The logistic baseline outperforms the MLP on this
 subset; both are weakly supervised from interval annotations.
