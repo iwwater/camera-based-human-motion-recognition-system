@@ -1,0 +1,14 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# videos are too large to commit; the CSV manifest is committed
+data/videos/
+!data/videos.csv
+
+# local browser/test artifacts
+.playwright-mcp/
+movement-session-*.json
+*.log

@@ -1,0 +1,1112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pose-Based Rep Counting Baseline</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23111827'/%3E%3Ccircle cx='32' cy='18' r='7' fill='%2360a5fa'/%3E%3Cpath d='M20 54l8-22 4 8 4-8 8 22' stroke='%23f8fafc' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+  <style>
+    :root {
+      color: #111827;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+      font-size: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #f3f4f6;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      padding: 20px 24px;
+    }
+
+    header h1 {
+      font-size: 22px;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    header p {
+      font-size: 14px;
+      margin: 6px 0 0;
+      opacity: .86;
+    }
+
+    main {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(360px, 2fr) minmax(310px, 1fr);
+      padding: 20px;
+    }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 8px 28px rgba(15, 23, 42, .08);
+      padding: 16px;
+    }
+
+    .stage {
+      aspect-ratio: 16 / 9;
+      background: #0f172a;
+      border-radius: 8px;
+      overflow: hidden;
+      position: relative;
+      width: 100%;
+    }
+
+    #webcam {
+      height: 1px;
+      left: -9999px;
+      opacity: 0;
+      position: absolute;
+      top: 0;
+      width: 1px;
+    }
+
+    #overlay {
+      display: block;
+      height: 100%;
+      width: 100%;
+    }
+
+    .controls,
+    .toggles {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button,
+    select {
+      border: 0;
+      border-radius: 8px;
+      font-weight: 650;
+      min-height: 40px;
+      padding: 10px 12px;
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    button.ghost {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #0f172a;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: .65;
+    }
+
+    select {
+      background: #f3f4f6;
+      max-width: 100%;
+    }
+
+    label.toggle {
+      align-items: center;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      display: inline-flex;
+      gap: 8px;
+      min-height: 36px;
+      padding: 8px 10px;
+    }
+
+    .status {
+      color: #374151;
+      font-size: 14px;
+      min-width: 140px;
+    }
+
+    .metric {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+
+    .box {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      min-height: 74px;
+      padding: 12px;
+    }
+
+    .label {
+      color: #6b7280;
+      font-size: 12px;
+      line-height: 1.2;
+    }
+
+    .value {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    .value.small {
+      font-size: 18px;
+      line-height: 1.25;
+    }
+
+    .feedback {
+      background: #ecfeff;
+      border: 1px solid #a5f3fc;
+      border-radius: 8px;
+      line-height: 1.55;
+      margin-top: 12px;
+      padding: 12px;
+    }
+
+    .warn {
+      background: #fff7ed;
+      border-color: #fed7aa;
+    }
+
+    .ok {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+    }
+
+    .debug {
+      color: #475569;
+      display: grid;
+      gap: 6px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+
+    .debug div {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 12px;
+      padding: 8px;
+    }
+
+    .pipeline {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 12px;
+    }
+
+    .pipeline div {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      color: #334155;
+      font-size: 12px;
+      line-height: 1.35;
+      min-height: 56px;
+      padding: 8px;
+    }
+
+    .pipeline strong {
+      color: #0f172a;
+      display: block;
+      font-size: 12px;
+    }
+
+    ul {
+      line-height: 1.7;
+      margin: 10px 0 0 20px;
+      padding: 0;
+    }
+
+    small {
+      color: #6b7280;
+      display: block;
+      line-height: 1.55;
+      margin-top: 10px;
+    }
+
+    code {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 2px 5px;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .metric,
+      .debug,
+      .pipeline {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Pose-Based Rep Counting Baseline</h1>
+  <p>Pose landmarks -> movement stage detection -> basic movement-quality feedback. General wellness support only.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div class="stage">
+      <video id="webcam" playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="controls">
+      <button id="startBtn">Start Camera</button>
+      <button id="resetBtn" class="secondary">Reset Session</button>
+      <button id="calibrateBtn" class="secondary">Start Calibration</button>
+      <button id="skipCalibrationBtn" class="ghost">Use Fixed Thresholds</button>
+      <button id="exportBtn" class="ghost">Export Session JSON</button>
+      <select id="exercise">
+        <option value="squat">Chair Squat / Low-Impact Squat</option>
+        <option value="march">Silent Marching</option>
+      </select>
+      <span id="status" class="status">Model not loaded</span>
+    </div>
+    <div class="toggles">
+      <label class="toggle"><input id="mirrorToggle" type="checkbox" checked> Selfie mirror</label>
+      <label class="toggle"><input id="skeletonToggle" type="checkbox" checked> Show skeleton</label>
+      <label class="toggle"><input id="guideToggle" type="checkbox" checked> Show guide frame</label>
+    </div>
+    <small>
+      Run this page from a local server, e.g. <code>python -m http.server 8000</code>,
+      then open <code>http://localhost:8000</code>. Camera access may not work from a normal file URL.
+    </small>
+  </section>
+
+  <aside class="card">
+    <h2 style="margin-top:0">Live Output</h2>
+    <div class="metric">
+      <div class="box">
+        <div class="label">Repetition Count</div>
+        <div id="repCount" class="value">0</div>
+      </div>
+      <div class="box">
+        <div class="label">Movement Stage</div>
+        <div id="stageText" class="value small">Ready</div>
+      </div>
+      <div class="box">
+        <div class="label">Left Knee Angle</div>
+        <div id="leftKnee" class="value small">--</div>
+      </div>
+      <div class="box">
+        <div class="label">Right Knee Angle</div>
+        <div id="rightKnee" class="value small">--</div>
+      </div>
+      <div class="box">
+        <div class="label">ROM Score</div>
+        <div id="romScore" class="value small">--</div>
+      </div>
+      <div class="box">
+        <div class="label">Tempo Consistency</div>
+        <div id="tempoScore" class="value small">--</div>
+      </div>
+    </div>
+
+    <div class="debug">
+      <div><strong>Tracking</strong><br><span id="trackingQuality">No pose</span></div>
+      <div><strong>Framing</strong><br><span id="framingQuality">Stand in view</span></div>
+      <div><strong>FPS</strong><br><span id="fpsText">--</span></div>
+      <div><strong>Render</strong><br><span id="renderText">Canvas contain</span></div>
+      <div><strong>Calibration</strong><br><span id="calibrationText">Fixed thresholds</span></div>
+      <div><strong>Last Rep</strong><br><span id="lastRepText">No completed rep</span></div>
+    </div>
+
+    <h3>Research Pipeline</h3>
+    <div class="pipeline" aria-label="Research-grounded movement recognition pipeline">
+      <div><strong>1. Pose Backend</strong>MediaPipe BlazePose, 33 landmarks.</div>
+      <div><strong>2. Features</strong>Knee angles, hip position, visibility.</div>
+      <div><strong>3. Calibration</strong>Personal thresholds or fixed fallback.</div>
+      <div><strong>4. Recognition</strong>Rule state machine baseline.</div>
+      <div><strong>5. Quality</strong>ROM and tempo session metrics.</div>
+      <div><strong>6. Logging</strong>JSON export for offline OBO/MAE.</div>
+    </div>
+
+    <div id="feedback" class="feedback">
+      Start the camera and stand in view. For the squat demo, keep your whole body visible.
+    </div>
+
+    <h3>Prototype Scope</h3>
+    <ul>
+      <li>Detects human pose landmarks from camera input.</li>
+      <li>Uses a rule-based baseline inspired by published repetition-counting pipelines.</li>
+      <li>Exports session data for later labeled evaluation; no formal accuracy is claimed here.</li>
+      <li>Draws video and landmarks in one canvas to avoid overlay misalignment.</li>
+      <li>Does not diagnose, treat, or prevent disease.</li>
+    </ul>
+  </aside>
+</main>
+
+<script type="module">
+  import {
+    PoseLandmarker,
+    FilesetResolver
+  } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+  const video = document.getElementById("webcam");
+  const canvas = document.getElementById("overlay");
+  const ctx = canvas.getContext("2d");
+  const startBtn = document.getElementById("startBtn");
+  const resetBtn = document.getElementById("resetBtn");
+  const calibrateBtn = document.getElementById("calibrateBtn");
+  const skipCalibrationBtn = document.getElementById("skipCalibrationBtn");
+  const exportBtn = document.getElementById("exportBtn");
+  const statusEl = document.getElementById("status");
+  const exerciseEl = document.getElementById("exercise");
+  const mirrorToggle = document.getElementById("mirrorToggle");
+  const skeletonToggle = document.getElementById("skeletonToggle");
+  const guideToggle = document.getElementById("guideToggle");
+
+  const repCountEl = document.getElementById("repCount");
+  const stageTextEl = document.getElementById("stageText");
+  const leftKneeEl = document.getElementById("leftKnee");
+  const rightKneeEl = document.getElementById("rightKnee");
+  const romScoreEl = document.getElementById("romScore");
+  const tempoScoreEl = document.getElementById("tempoScore");
+  const feedbackEl = document.getElementById("feedback");
+  const trackingQualityEl = document.getElementById("trackingQuality");
+  const framingQualityEl = document.getElementById("framingQuality");
+  const fpsTextEl = document.getElementById("fpsText");
+  const renderTextEl = document.getElementById("renderText");
+  const calibrationTextEl = document.getElementById("calibrationText");
+  const lastRepTextEl = document.getElementById("lastRepText");
+
+  const LANDMARK = {
+    LEFT_SHOULDER: 11,
+    RIGHT_SHOULDER: 12,
+    LEFT_HIP: 23,
+    RIGHT_HIP: 24,
+    LEFT_KNEE: 25,
+    RIGHT_KNEE: 26,
+    LEFT_ANKLE: 27,
+    RIGHT_ANKLE: 28
+  };
+
+  const REQUIRED_LOWER_BODY = [
+    LANDMARK.LEFT_HIP,
+    LANDMARK.RIGHT_HIP,
+    LANDMARK.LEFT_KNEE,
+    LANDMARK.RIGHT_KNEE,
+    LANDMARK.LEFT_ANKLE,
+    LANDMARK.RIGHT_ANKLE
+  ];
+
+  const VISIBILITY_THRESHOLD = 0.55;
+  const DEFAULT_SQUAT_THRESHOLDS = {
+    descend: 128,
+    bottom: 112,
+    ascend: 148,
+    top: 160
+  };
+  const STABLE_FRAMES = 3;
+  const REP_COOLDOWN_MS = 750;
+
+  let poseLandmarker;
+  let running = false;
+  let lastVideoTime = -1;
+  let repCount = 0;
+  let movementStage = "Ready";
+  let marchStepState = "down";
+  let drawRect = { x: 0, y: 0, w: 0, h: 0 };
+  let squatBottomFrames = 0;
+  let squatTopFrames = 0;
+  let lastRepAt = 0;
+  let smoothedKnee = null;
+  let lastFrameAt = performance.now();
+  let fps = 0;
+  let weakPoseFrames = 0;
+  let activeSquatThresholds = { ...DEFAULT_SQUAT_THRESHOLDS };
+  let currentSquatFrame = null;
+  let currentRepStartedAt = 0;
+  let currentRepMinKnee = null;
+  let calibrationState = {
+    mode: "fixed",
+    phase: "idle",
+    standingKnee: null,
+    bottomKnee: null,
+    capturedAt: null
+  };
+  let qualityHistory = [];
+  let sessionLog = newSessionLog();
+
+  function newSessionLog() {
+    return {
+      startedAt: new Date().toISOString(),
+      exercise: exerciseEl?.value ?? "squat",
+      model: "MediaPipe Pose Landmarker Lite via CDN",
+      recognition: "rule-based baseline with EMA, hysteresis, stable frames, and cooldown",
+      calibration: null,
+      thresholdMode: "fixed",
+      transitions: [],
+      reps: []
+    };
+  }
+
+  function angleDeg(a, b, c) {
+    const ab = { x: a.x - b.x, y: a.y - b.y };
+    const cb = { x: c.x - b.x, y: c.y - b.y };
+    const dot = ab.x * cb.x + ab.y * cb.y;
+    const magAB = Math.hypot(ab.x, ab.y);
+    const magCB = Math.hypot(cb.x, cb.y);
+    const cos = Math.min(1, Math.max(-1, dot / (magAB * magCB + 1e-8)));
+    return Math.acos(cos) * 180 / Math.PI;
+  }
+
+  function smoothValue(previous, next, alpha = 0.35) {
+    return previous == null ? next : previous * (1 - alpha) + next * alpha;
+  }
+
+  function setFeedback(text, type = "") {
+    feedbackEl.textContent = text;
+    feedbackEl.className = "feedback " + type;
+  }
+
+  function logTransition(from, to, reason, extra = {}) {
+    if (from === to) return;
+    sessionLog.transitions.push({
+      atMs: Math.round(performance.now()),
+      exercise: exerciseEl.value,
+      from,
+      to,
+      reason,
+      ...extra
+    });
+  }
+
+  function setStage(nextStage, reason, extra = {}) {
+    const previous = movementStage;
+    movementStage = nextStage;
+    logTransition(previous, nextStage, reason, extra);
+    stageTextEl.textContent = movementStage;
+  }
+
+  function formatThresholds(thresholds) {
+    return `D:${Math.round(thresholds.descend)} B:${Math.round(thresholds.bottom)} A:${Math.round(thresholds.ascend)} T:${Math.round(thresholds.top)}`;
+  }
+
+  function updateCalibrationText() {
+    if (calibrationState.mode === "personalized") {
+      calibrationTextEl.textContent = "Personalized " + formatThresholds(activeSquatThresholds);
+    } else if (calibrationState.phase !== "idle") {
+      calibrationTextEl.textContent = calibrationState.phase === "standing"
+        ? "Capture standing posture"
+        : "Capture bottom posture";
+    } else {
+      calibrationTextEl.textContent = "Fixed " + formatThresholds(activeSquatThresholds);
+    }
+  }
+
+  function resetQualityDisplay() {
+    romScoreEl.textContent = "--";
+    tempoScoreEl.textContent = "--";
+    lastRepTextEl.textContent = "No completed rep";
+  }
+
+  function clearActiveRep(reason = "reset") {
+    squatBottomFrames = 0;
+    squatTopFrames = 0;
+    currentRepStartedAt = 0;
+    currentRepMinKnee = null;
+    if (movementStage !== "Ready") {
+      setStage("Ready", reason);
+    }
+  }
+
+  function resetRecognition() {
+    repCount = 0;
+    setStage("Ready", "session_reset");
+    marchStepState = "down";
+    squatBottomFrames = 0;
+    squatTopFrames = 0;
+    lastRepAt = 0;
+    smoothedKnee = null;
+    currentSquatFrame = null;
+    currentRepStartedAt = 0;
+    currentRepMinKnee = null;
+    weakPoseFrames = 0;
+    qualityHistory = [];
+    sessionLog = newSessionLog();
+    sessionLog.thresholdMode = calibrationState.mode === "personalized" ? "personalized" : "fixed";
+    sessionLog.calibration = calibrationState.mode === "personalized" ? { ...calibrationState, thresholds: { ...activeSquatThresholds } } : null;
+    repCountEl.textContent = "0";
+    stageTextEl.textContent = "Ready";
+    leftKneeEl.textContent = "--";
+    rightKneeEl.textContent = "--";
+    trackingQualityEl.textContent = "No pose";
+    framingQualityEl.textContent = "Stand in view";
+    resetQualityDisplay();
+    setFeedback("Counter reset. Stand in view and start again.");
+  }
+
+  function useFixedThresholds() {
+    activeSquatThresholds = { ...DEFAULT_SQUAT_THRESHOLDS };
+    calibrationState = {
+      mode: "fixed",
+      phase: "idle",
+      standingKnee: null,
+      bottomKnee: null,
+      capturedAt: null
+    };
+    resetRecognition();
+    sessionLog.thresholdMode = "fixed";
+    sessionLog.calibration = null;
+    calibrateBtn.textContent = "Start Calibration";
+    updateCalibrationText();
+    setFeedback("Using fixed baseline thresholds. This is explainable, but less personalized across users.", "warn");
+  }
+
+  function derivePersonalThresholds(standingKnee, bottomKnee) {
+    const range = standingKnee - bottomKnee;
+    return {
+      descend: standingKnee - range * 0.48,
+      bottom: bottomKnee + range * 0.12,
+      ascend: bottomKnee + range * 0.58,
+      top: standingKnee - range * 0.16
+    };
+  }
+
+  function handleCalibrationClick() {
+    if (exerciseEl.value !== "squat") {
+      setFeedback("Calibration is only used for the squat recognizer. Switch to squat first.", "warn");
+      return;
+    }
+    const frameAgeMs = currentSquatFrame ? performance.now() - currentSquatFrame.atMs : Infinity;
+    if (!currentSquatFrame || !currentSquatFrame.validForCalibration || frameAgeMs > 500) {
+      setFeedback("Start the camera and keep hips, knees, and ankles visible before calibration.", "warn");
+      return;
+    }
+
+    if (calibrationState.phase === "idle") {
+      calibrationState = {
+        mode: "calibrating",
+        phase: "standing",
+        standingKnee: null,
+        bottomKnee: null,
+        capturedAt: null
+      };
+      calibrateBtn.textContent = "Capture Standing";
+      updateCalibrationText();
+      setFeedback("Calibration step 1: stand tall, then click Capture Standing.", "ok");
+      return;
+    }
+
+    if (calibrationState.phase === "standing") {
+      calibrationState.standingKnee = currentSquatFrame.avgKnee;
+      calibrationState.phase = "bottom";
+      calibrateBtn.textContent = "Capture Bottom";
+      updateCalibrationText();
+      setFeedback("Calibration step 2: perform one comfortable lowest squat, then click Capture Bottom.", "ok");
+      return;
+    }
+
+    const standingKnee = calibrationState.standingKnee;
+    const bottomKnee = currentSquatFrame.avgKnee;
+    const range = standingKnee - bottomKnee;
+    if (range < 25) {
+      setFeedback("Calibration range is too small. Stand tall first, then capture a lower squat bottom.", "warn");
+      calibrationState.phase = "standing";
+      calibrateBtn.textContent = "Capture Standing";
+      updateCalibrationText();
+      return;
+    }
+
+    calibrationState.bottomKnee = bottomKnee;
+    calibrationState.mode = "personalized";
+    calibrationState.phase = "idle";
+    calibrationState.capturedAt = new Date().toISOString();
+    activeSquatThresholds = derivePersonalThresholds(standingKnee, bottomKnee);
+    sessionLog.calibration = { ...calibrationState, thresholds: { ...activeSquatThresholds } };
+    calibrateBtn.textContent = "Recalibrate";
+    updateCalibrationText();
+    resetRecognition();
+    setFeedback("Personalized squat thresholds captured. The session log will include these calibration values.", "ok");
+  }
+
+  function tempoConsistency() {
+    if (qualityHistory.length < 2) return null;
+    const durations = qualityHistory.slice(-5).map((rep) => rep.durationMs);
+    const mean = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+    const variance = durations.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / durations.length;
+    const cv = Math.sqrt(variance) / Math.max(mean, 1);
+    return Math.max(0, Math.min(1, 1 - cv));
+  }
+
+  function recordSquatRep(avgKnee) {
+    const now = performance.now();
+    const standing = calibrationState.mode === "personalized"
+      ? calibrationState.standingKnee
+      : DEFAULT_SQUAT_THRESHOLDS.top;
+    const targetBottom = calibrationState.mode === "personalized"
+      ? calibrationState.bottomKnee
+      : DEFAULT_SQUAT_THRESHOLDS.bottom;
+    const minKnee = currentRepMinKnee ?? avgKnee;
+    const totalRange = Math.max(1, standing - targetBottom);
+    const completedRange = Math.max(0, standing - minKnee);
+    const romScore = Math.max(0, Math.min(1, completedRange / totalRange));
+    const durationMs = currentRepStartedAt ? now - currentRepStartedAt : 0;
+    const quality = {
+      index: repCount,
+      atMs: Math.round(now),
+      thresholdMode: calibrationState.mode === "personalized" ? "personalized" : "fixed",
+      thresholds: { ...activeSquatThresholds },
+      durationMs: Math.round(durationMs),
+      minKneeDeg: Math.round(minKnee),
+      romScore: Number(romScore.toFixed(2))
+    };
+    qualityHistory.push(quality);
+    const tempo = tempoConsistency();
+    quality.tempoConsistency = tempo == null ? null : Number(tempo.toFixed(2));
+    sessionLog.reps.push(quality);
+    romScoreEl.textContent = Math.round(romScore * 100) + "%";
+    tempoScoreEl.textContent = tempo == null ? "Need 2 reps" : Math.round(tempo * 100) + "%";
+    lastRepTextEl.textContent = `${quality.durationMs} ms, min knee ${quality.minKneeDeg} deg`;
+  }
+
+  function exportSession() {
+    const payload = {
+      ...sessionLog,
+      exportedAt: new Date().toISOString(),
+      currentExercise: exerciseEl.value,
+      note: "Prototype session metrics only. Use labeled clips and evaluation_template.md before claiming accuracy."
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `movement-session-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setFeedback("Session JSON exported for offline labeling and OBO/MAE evaluation.", "ok");
+  }
+
+  function requiredVisibility(landmarks, keys = REQUIRED_LOWER_BODY) {
+    const values = keys.map((key) => landmarks[key]?.visibility ?? 0);
+    return Math.min(...values);
+  }
+
+  function bodyBounds(landmarks) {
+    const visible = landmarks.filter((p) => (p.visibility ?? 1) > 0.45);
+    if (!visible.length) return null;
+    const xs = visible.map((p) => p.x);
+    const ys = visible.map((p) => p.y);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys)
+    };
+  }
+
+  function framingStatus(landmarks) {
+    const bounds = bodyBounds(landmarks);
+    if (!bounds) return { ok: false, text: "No pose" };
+    const margin = 0.035;
+    if (bounds.minX < margin || bounds.maxX > 1 - margin) {
+      return { ok: false, text: "Move sideways / fit body" };
+    }
+    if (bounds.minY < margin) {
+      return { ok: false, text: "Move back: head clipped" };
+    }
+    if (bounds.maxY > 1 - margin) {
+      return { ok: false, text: "Move back: feet clipped" };
+    }
+    return { ok: true, text: "Full body in frame" };
+  }
+
+  function pointToCanvas(point) {
+    const mirroredX = mirrorToggle.checked ? 1 - point.x : point.x;
+    return {
+      x: drawRect.x + mirroredX * drawRect.w,
+      y: drawRect.y + point.y * drawRect.h
+    };
+  }
+
+  function connectionPair(connection) {
+    if (Array.isArray(connection)) return connection;
+    return [connection.start, connection.end];
+  }
+
+  function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round(rect.width * dpr));
+    const height = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { width: rect.width, height: rect.height };
+  }
+
+  function computeContainRect(sourceW, sourceH, targetW, targetH) {
+    const scale = Math.min(targetW / sourceW, targetH / sourceH);
+    const w = sourceW * scale;
+    const h = sourceH * scale;
+    return {
+      x: (targetW - w) / 2,
+      y: (targetH - h) / 2,
+      w,
+      h
+    };
+  }
+
+  function drawGuide(width, height) {
+    if (!guideToggle.checked || drawRect.w === 0) return;
+    ctx.save();
+    ctx.strokeStyle = "rgba(96, 165, 250, .78)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    const padX = drawRect.w * 0.12;
+    const padY = drawRect.h * 0.08;
+    ctx.strokeRect(drawRect.x + padX, drawRect.y + padY, drawRect.w - padX * 2, drawRect.h - padY * 2);
+    ctx.fillStyle = "rgba(15, 23, 42, .72)";
+    ctx.fillRect(12, height - 38, 268, 26);
+    ctx.fillStyle = "#e0f2fe";
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillText("Keep full body inside the dashed guide frame", 22, height - 20);
+    ctx.restore();
+  }
+
+  function drawVideoFrame() {
+    const { width, height } = resizeCanvas();
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, width, height);
+
+    if (!video.videoWidth || !video.videoHeight) {
+      drawRect = { x: 0, y: 0, w: width, h: height };
+      return;
+    }
+
+    drawRect = computeContainRect(video.videoWidth, video.videoHeight, width, height);
+    ctx.save();
+    if (mirrorToggle.checked) {
+      ctx.translate(drawRect.x + drawRect.w, drawRect.y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, drawRect.w, drawRect.h);
+    } else {
+      ctx.drawImage(video, drawRect.x, drawRect.y, drawRect.w, drawRect.h);
+    }
+    ctx.restore();
+    drawGuide(width, height);
+  }
+
+  function drawLandmarks(landmarks) {
+    if (!skeletonToggle.checked || !landmarks?.length) return;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    for (const connection of PoseLandmarker.POSE_CONNECTIONS) {
+      const [start, end] = connectionPair(connection);
+      const a = landmarks[start];
+      const b = landmarks[end];
+      if (!a || !b) continue;
+      if ((a.visibility ?? 1) < 0.35 || (b.visibility ?? 1) < 0.35) continue;
+      const pa = pointToCanvas(a);
+      const pb = pointToCanvas(b);
+      ctx.strokeStyle = "rgba(34, 211, 238, .9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pa.x, pa.y);
+      ctx.lineTo(pb.x, pb.y);
+      ctx.stroke();
+    }
+
+    for (const point of landmarks) {
+      if ((point.visibility ?? 1) < 0.35) continue;
+      const p = pointToCanvas(point);
+      ctx.fillStyle = (point.visibility ?? 1) >= VISIBILITY_THRESHOLD ? "#f8fafc" : "#f97316";
+      ctx.strokeStyle = "#0f172a";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  async function loadModel() {
+    statusEl.textContent = "Loading pose model...";
+    startBtn.disabled = true;
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
+    const options = {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numPoses: 1,
+      minPoseDetectionConfidence: 0.55,
+      minPosePresenceConfidence: 0.55,
+      minTrackingConfidence: 0.55
+    };
+
+    try {
+      poseLandmarker = await PoseLandmarker.createFromOptions(vision, options);
+    } catch (err) {
+      console.warn("GPU delegate failed, retrying on CPU.", err);
+      options.baseOptions.delegate = "CPU";
+      poseLandmarker = await PoseLandmarker.createFromOptions(vision, options);
+    }
+
+    statusEl.textContent = "Model loaded";
+    startBtn.disabled = false;
+  }
+
+  async function startCamera() {
+    if (!poseLandmarker) await loadModel();
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user"
+      },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+    running = true;
+    lastVideoTime = -1;
+    statusEl.textContent = "Running";
+    requestAnimationFrame(loop);
+  }
+
+  function analyzeSquat(landmarks) {
+    const leftHip = landmarks[LANDMARK.LEFT_HIP];
+    const leftKnee = landmarks[LANDMARK.LEFT_KNEE];
+    const leftAnkle = landmarks[LANDMARK.LEFT_ANKLE];
+    const rightHip = landmarks[LANDMARK.RIGHT_HIP];
+    const rightKnee = landmarks[LANDMARK.RIGHT_KNEE];
+    const rightAnkle = landmarks[LANDMARK.RIGHT_ANKLE];
+    const leftShoulder = landmarks[LANDMARK.LEFT_SHOULDER];
+    const rightShoulder = landmarks[LANDMARK.RIGHT_SHOULDER];
+
+    const leftKneeAngle = angleDeg(leftHip, leftKnee, leftAnkle);
+    const rightKneeAngle = angleDeg(rightHip, rightKnee, rightAnkle);
+    const rawAvgKnee = (leftKneeAngle + rightKneeAngle) / 2;
+    smoothedKnee = smoothValue(smoothedKnee, rawAvgKnee);
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    const shoulderY = (leftShoulder.y + rightShoulder.y) / 2;
+    const lowerBodyConfidence = requiredVisibility(landmarks);
+    const thresholds = activeSquatThresholds;
+    currentSquatFrame = {
+      atMs: performance.now(),
+      avgKnee: smoothedKnee,
+      leftKneeAngle,
+      rightKneeAngle,
+      validForCalibration: lowerBodyConfidence >= VISIBILITY_THRESHOLD
+    };
+
+    leftKneeEl.textContent = Math.round(leftKneeAngle) + " deg";
+    rightKneeEl.textContent = Math.round(rightKneeAngle) + " deg";
+    trackingQualityEl.textContent = Math.round(lowerBodyConfidence * 100) + "% lower-body";
+
+    if (lowerBodyConfidence < VISIBILITY_THRESHOLD) {
+      currentSquatFrame = null;
+      weakPoseFrames += 1;
+      if (weakPoseFrames >= 8) {
+        clearActiveRep("weak_pose_reset");
+      }
+      setFeedback("Tracking is weak. Keep hips, knees, and ankles visible before counting.", "warn");
+      return;
+    }
+    weakPoseFrames = 0;
+
+    if (movementStage === "Ready" && smoothedKnee < thresholds.descend && hipY > shoulderY + 0.14) {
+      setStage("Descending", "squat_descend", { kneeDeg: Math.round(smoothedKnee) });
+      squatBottomFrames = 0;
+      currentRepStartedAt = performance.now();
+      currentRepMinKnee = smoothedKnee;
+      setFeedback("Descending detected. Keep the full body inside the guide frame.", "ok");
+    }
+
+    if (movementStage === "Descending") {
+      if (smoothedKnee > thresholds.top) {
+        clearActiveRep("squat_abort_before_bottom");
+        setFeedback("Partial squat was not counted. Reach the calibrated bottom range before returning up.", "warn");
+        repCountEl.textContent = repCount;
+        return;
+      }
+      currentRepMinKnee = Math.min(currentRepMinKnee ?? smoothedKnee, smoothedKnee);
+      squatBottomFrames = smoothedKnee < thresholds.bottom ? squatBottomFrames + 1 : 0;
+      if (squatBottomFrames >= STABLE_FRAMES) {
+        setStage("Bottom", "stable_bottom", { kneeDeg: Math.round(smoothedKnee) });
+        setFeedback("Bottom position detected. Return upward with control.", "ok");
+      }
+    }
+
+    if (movementStage === "Bottom" && smoothedKnee > thresholds.ascend) {
+      setStage("Ascending", "squat_ascend", { kneeDeg: Math.round(smoothedKnee) });
+      squatTopFrames = 0;
+      setFeedback("Ascending detected. Stand tall to complete the repetition.", "ok");
+    }
+
+    if (movementStage === "Ascending") {
+      squatTopFrames = smoothedKnee > thresholds.top ? squatTopFrames + 1 : 0;
+      if (squatTopFrames >= STABLE_FRAMES && performance.now() - lastRepAt > REP_COOLDOWN_MS) {
+        repCount += 1;
+        lastRepAt = performance.now();
+        setStage("Ready", "rep_complete", { kneeDeg: Math.round(smoothedKnee), repCount });
+        recordSquatRep(smoothedKnee);
+        setFeedback("Rep counted. The state machine waited for stable bottom and top positions.", "ok");
+      }
+    }
+
+    if (movementStage === "Ready" && smoothedKnee > 132 && smoothedKnee < 152) {
+      setFeedback("Partial squat range detected. Move lower only if comfortable and stable.", "warn");
+    }
+
+    repCountEl.textContent = repCount;
+  }
+
+  function analyzeMarch(landmarks) {
+    const leftAnkle = landmarks[LANDMARK.LEFT_ANKLE];
+    const rightAnkle = landmarks[LANDMARK.RIGHT_ANKLE];
+    const leftHip = landmarks[LANDMARK.LEFT_HIP];
+    const rightHip = landmarks[LANDMARK.RIGHT_HIP];
+    const confidence = requiredVisibility(landmarks, [
+      LANDMARK.LEFT_HIP,
+      LANDMARK.RIGHT_HIP,
+      LANDMARK.LEFT_ANKLE,
+      LANDMARK.RIGHT_ANKLE
+    ]);
+
+    leftKneeEl.textContent = "--";
+    rightKneeEl.textContent = "--";
+    trackingQualityEl.textContent = Math.round(confidence * 100) + "% march";
+
+    if (confidence < VISIBILITY_THRESHOLD) {
+      setFeedback("Tracking is weak. Keep hips and feet visible for marching.", "warn");
+      return;
+    }
+
+    const hipY = (leftHip.y + rightHip.y) / 2;
+    const highestAnkleY = Math.min(leftAnkle.y, rightAnkle.y);
+    const lift = hipY - highestAnkleY;
+
+    if (lift > -0.30 && marchStepState === "down") {
+      marchStepState = "up";
+      setStage("Step Lift", "march_lift");
+      setFeedback("Step lift detected. Keep the motion low-impact and avoid jumping.", "ok");
+    } else if (lift < -0.38 && marchStepState === "up" && performance.now() - lastRepAt > 250) {
+      marchStepState = "down";
+      setStage("Step Down", "march_step_down");
+      repCount += 1;
+      lastRepAt = performance.now();
+      sessionLog.reps.push({
+        index: repCount,
+        atMs: Math.round(performance.now()),
+        exercise: "march",
+        qualityNote: "March mode counts low-impact steps; ROM/tempo scoring is squat-focused."
+      });
+      setFeedback("Step counted. Try to keep your upper body stable and landing quiet.", "ok");
+    }
+
+    repCountEl.textContent = repCount;
+  }
+
+  function updateFrameStats() {
+    const now = performance.now();
+    const delta = now - lastFrameAt;
+    lastFrameAt = now;
+    if (delta > 0) {
+      fps = smoothValue(fps || null, 1000 / delta, 0.12);
+      fpsTextEl.textContent = Math.round(fps).toString();
+    }
+  }
+
+  async function loop() {
+    if (!running) return;
+    drawVideoFrame();
+
+    if (video.currentTime !== lastVideoTime) {
+      lastVideoTime = video.currentTime;
+      const results = poseLandmarker.detectForVideo(video, performance.now());
+      const landmarks = results.landmarks?.[0];
+
+      if (landmarks) {
+        drawLandmarks(landmarks);
+        const framing = framingStatus(landmarks);
+        framingQualityEl.textContent = framing.text;
+        if (!framing.ok) {
+          setFeedback(framing.text + ". Move until the whole body is inside the guide frame.", "warn");
+        } else if (exerciseEl.value === "squat") {
+          analyzeSquat(landmarks);
+        } else {
+          analyzeMarch(landmarks);
+        }
+      } else {
+        trackingQualityEl.textContent = "No pose";
+        framingQualityEl.textContent = "Stand in view";
+        currentSquatFrame = null;
+        weakPoseFrames += 1;
+        if (weakPoseFrames >= 8) {
+          clearActiveRep("no_pose_reset");
+        } else {
+          stageTextEl.textContent = "No pose";
+        }
+        setFeedback("No person detected. Please stand in front of the camera.", "warn");
+      }
+    }
+
+    updateFrameStats();
+    requestAnimationFrame(loop);
+  }
+
+  startBtn.addEventListener("click", async () => {
+    try {
+      await startCamera();
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = "Camera/model error";
+      startBtn.disabled = false;
+      setFeedback("Could not start camera or load the model. Use Chrome/Edge and open http://localhost:8000.", "warn");
+    }
+  });
+
+  resetBtn.addEventListener("click", resetRecognition);
+  calibrateBtn.addEventListener("click", handleCalibrationClick);
+  skipCalibrationBtn.addEventListener("click", useFixedThresholds);
+  exportBtn.addEventListener("click", exportSession);
+  exerciseEl.addEventListener("change", resetRecognition);
+  mirrorToggle.addEventListener("change", () => {
+    renderTextEl.textContent = mirrorToggle.checked ? "Mirrored contain" : "Normal contain";
+  });
+
+  resizeCanvas();
+  updateCalibrationText();
+  window.addEventListener("resize", resizeCanvas);
+</script>
+</body>
+</html>
