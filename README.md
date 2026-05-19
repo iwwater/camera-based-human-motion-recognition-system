@@ -42,19 +42,31 @@ The state-machine thresholds are intentionally fixed to match the browser demo:
 | EMA alpha | 0.35 |
 | hip-below-shoulder offset | 0.14 |
 
-## Evaluation Status
+## Evaluation
 
-Quantitative evaluation is not filled in yet. The repository includes the
-evaluation script and the input manifest format, but real OBO accuracy and MAE
-must come from running `eval.py` on labeled videos.
+The current quantitative result is a small baseline run on 20 squat clips
+extracted from the RepCount/PoseRAC data package. The clips are not committed
+because the video data is large; `data/videos.csv` records the local manifest
+used for the run, and `results/eval.csv` records the per-video outputs.
 
-Expected manifest format:
+| Dataset slice | Clips | MAE | OBO accuracy |
+|---|---:|---:|---:|
+| RepCount squat subset | 20 | 6.750 | 5/20 = 0.250 |
+
+This is intentionally reported as a baseline result, not as a formal accuracy
+claim. The low score is useful evidence that the fixed-threshold recognizer is
+fragile under dataset variation and should be compared against a learned stage
+recognizer.
+
+Manifest format:
 
 ```csv
 video_path,gt_count,category
-squat_001.mp4,12,front
-squat_002.mp4,8,side
+repcount_squat/001_val1244.mp4,1,repcount_test_squant
+repcount_squat/002_val1257.mp4,2,repcount_test_squant
 ```
+
+The `squant` spelling is preserved from the source annotation label.
 
 ## Reproducing The Evaluation
 
@@ -66,12 +78,22 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-Run evaluation after adding videos under `data/videos/` and labels in
-`data/videos.csv`:
+Download `RepCount_pose.tar.gz` from the
+[PoseRAC project](https://github.com/MiracleDance/PoseRAC), then extract a
+deterministic squat subset:
+
+```bash
+python prepare_repcount_sample.py --archive _downloads\RepCount_pose.tar.gz --count 20
+```
+
+Run evaluation:
 
 ```bash
 python eval.py --videos-csv data/videos.csv --videos-root data/videos --out results/eval.csv
 ```
+
+`eval.py` prints MAE and OBO accuracy and writes the per-clip outputs to
+`results/eval.csv`.
 
 ## Running The Browser Demo
 
@@ -93,20 +115,23 @@ certification.
 - Rule-based recognizer, not trained on data.
 - Performance may degrade under heavy occlusion, low light, side views, partial
   body framing, or very fast repetitions.
-- No quantitative claim should be made until `results/eval.csv` exists and the
-  README numbers are derived from it.
+- The current result is a 20-clip subset measurement, not a full benchmark.
+- Several clips produce zero counts because the fixed thresholds do not survive
+  camera/viewpoint and pose-estimation variation.
 
 ## Future Work
 
-1. Evaluate the fixed-threshold baseline on a labeled squat subset.
-2. Inspect high-error videos and describe concrete failure modes.
-3. Compare against a small learning-based stage recognizer using the same clips.
+1. Inspect high-error videos and describe concrete failure modes.
+2. Compare against a small learning-based stage recognizer using the same clips.
+3. Expand the evaluation split after the failure cases are understood.
 
 ## Related Work
 
 - BlazePose / MediaPipe Pose: real-time 33-landmark body tracking.
 - Hu et al. 2022, TransRAC: RepCount benchmark and OBO / MAE metrics.
 - Yao et al. 2023, PoseRAC: pose-driven learning approach to repetition
-  counting and a motivation for future comparison.
+  counting, plus the public
+  [RepCount_pose data package](https://github.com/MiracleDance/PoseRAC) used
+  by `prepare_repcount_sample.py`.
 - Dwibedi et al. 2020, Counting Out Time: reference repetition-counting
   framework.

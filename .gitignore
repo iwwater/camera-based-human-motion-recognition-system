@@ -7,6 +7,7 @@ __pycache__/
 # videos are too large to commit; the CSV manifest is committed
 data/videos/
 !data/videos.csv
+_downloads/
 
 # local browser/test artifacts
 .playwright-mcp/

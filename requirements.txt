@@ -1,2 +1,2 @@
-mediapipe>=0.10,<0.11
-opencv-python>=4.8
+mediapipe==0.10.21
+opencv-contrib-python==4.11.0.86
